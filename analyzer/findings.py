@@ -119,9 +119,9 @@ def validate(raw, chunk, index, state):
             1 for n in range(chunk["start"], chunk["end"] + 1)
             if index.info.get(n, {}).get("ip") == ip and "auth_fail" in index.info.get(n, {}).get("flags", []))
         only_logins = flags & ATTACK_FLAGS <= {"auth_fail", "auth_ok"}
-        if ftype in ("Unauthorized Access", "Other") and only_logins and "auth_ok" in flags \
-                and fails >= config.COMPROMISE_MIN_FAILS:
-            ftype = "Account Compromise"      # same event the real model labelled twice
+        if ftype in ("Unauthorized Access", "Other") and only_logins and fails >= config.COMPROMISE_MIN_FAILS:
+            # the real model calls brute-force logins "Unauthorized Access": file them with the right event
+            ftype = "Account Compromise" if "auth_ok" in flags else "Brute Force"
         if only_logins and fails < config.COMPROMISE_MIN_FAILS and not comp:
             dropped += 1                      # e.g. one wrong password then success
             notes.append(f"dropped {ftype} on {ip}: only {fails} failed login(s) - normal user error")
