@@ -1,0 +1,27 @@
+# Reproduces the assessment box: 2 vCPU, no GPU, 4 GB RAM total (model + backend).
+services:
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command: ["-m", "/models/${MODEL_FILE:-Qwen3.5-2B-Q4_K_M.gguf}",
+              "-c", "2048", "-np", "1", "-t", "2", "--jinja",
+              "--host", "0.0.0.0", "--port", "8080"]
+    volumes:
+      - ./models:/models:ro
+    cpus: 1.75
+    mem_limit: 3400m
+    restart: unless-stopped
+  app:
+    build: .
+    environment:
+      HOST: 0.0.0.0
+      LLM_BACKEND: llamacpp
+      LLM_URL: http://llm:8080
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    cpus: 0.25
+    mem_limit: 512m
+    depends_on:
+      - llm
+    restart: unless-stopped

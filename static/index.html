@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Log Analyzer</title>
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--ink:#16181d;--muted:#5f6673;--line:#e3e6eb;--accent:#2754c5;
+--crit:#b3261e;--high:#d9480f;--med:#b7791f;--low:#3b7a57;--ok:#2f855a;--run:#2754c5;--fail:#b3261e;--pend:#cfd4dc;
+--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#111318;--panel:#1a1d24;--ink:#e8eaee;--muted:#9aa1ad;--line:#2b303a;
+--accent:#7aa2ff;--pend:#3a404c;--crit:#ff6b5f;--high:#ff9248;--med:#e3b341;--low:#6cc58f;--ok:#58c88a;--run:#7aa2ff;--fail:#ff6b5f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+h1{font-size:17px;margin:0}h2{font-size:15px;margin:0 0 10px}h3{font-size:14px;margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding:16px;display:grid;gap:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:820px){.grid2{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.pill{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--pend)}.dot.ok{background:var(--ok)}.dot.bad{background:var(--fail)}
+.muted{color:var(--muted)}.mono{font-family:var(--mono);font-size:12px}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:7px;padding:7px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}button:disabled{opacity:.45;cursor:not-allowed}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:22px;text-align:center;cursor:pointer}
+.drop.over{border-color:var(--accent)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.bar{height:10px;background:var(--pend);border-radius:6px;overflow:hidden}.bar>div{height:100%;background:var(--accent);width:0;transition:width .4s}
+.parts{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}.parts span{width:22px;height:22px;border-radius:4px;background:var(--pend);font-size:10px;display:grid;place-items:center;color:#fff}
+.parts .done{background:var(--ok)}.parts .running{background:var(--run);animation:pulse 1s infinite}.parts .failed{background:var(--fail)}
+@keyframes pulse{50%{opacity:.5}}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:10px}
+.stat{border:1px solid var(--line);border-radius:8px;padding:6px 10px}.stat b{display:block;font-size:16px}
+pre{white-space:pre-wrap;word-break:break-word;margin:0;font:12px/1.45 var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:260px;overflow:auto}
+.events div{font:12px var(--mono);padding:2px 0;border-bottom:1px dashed var(--line)}.events .warn{color:var(--med)}.events .error{color:var(--fail)}
+.sev{display:inline-block;min-width:64px;text-align:center;border-radius:5px;padding:1px 8px;font-size:12px;font-weight:600;color:#fff}
+.Critical{background:var(--crit)}.High{background:var(--high)}.Medium{background:var(--med)}.Low{background:var(--low)}
+.finding{border:1px solid var(--line);border-radius:8px;margin-top:8px}
+.finding summary{list-style:none;cursor:pointer;padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.finding summary::-webkit-details-marker{display:none}.finding .body{padding:0 12px 12px}
+.tag{font-size:11px;border:1px solid var(--line);border-radius:4px;padding:0 6px;color:var(--muted)}
+.counts{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);font-size:12px}
+.err{color:var(--fail);margin-top:8px}
+select{font:inherit;padding:6px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);max-width:100%}
+</style>
+</head>
+<body>
+<header>
+  <h1>Local AI Security Log Analyzer</h1>
+  <div class="row">
+    <span class="pill"><span class="dot" id="mdot"></span><span id="mtext">model…</span></span>
+    <span class="pill" id="ram">RAM …</span>
+  </div>
+</header>
+<div class="wrap">
+  <div class="grid2">
+    <section class="card">
+      <h2>1 · Upload a log</h2>
+      <div class="drop" id="drop">Drop a .log or .txt file here, or click to choose</div>
+      <input type="file" id="file" accept=".log,.txt" hidden>
+      <div class="err" id="uperr"></div>
+      <div class="row" style="margin-top:12px">
+        <select id="jobs"><option value="">Previous analyses…</option></select>
+      </div>
+    </section>
+    <section class="card">
+      <h2>2 · Analyze</h2>
+      <div id="jobinfo" class="muted">No file selected.</div>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="start" disabled>Start analysis</button>
+        <button id="cancel" disabled>Cancel</button>
+        <button id="retry" disabled>Retry failed parts</button>
+      </div>
+      <div class="err" id="joberr"></div>
+    </section>
+  </div>
+
+  <section class="card" id="progress" hidden>
+    <div class="row" style="justify-content:space-between"><h2 id="phase">Progress</h2><span class="muted" id="eta"></span></div>
+    <div class="bar"><div id="barfill"></div></div>
+    <div class="parts" id="parts"></div>
+    <div class="stats" id="stats"></div>
+    <div class="grid2" style="margin-top:14px">
+      <div><h3>Carried into the current call</h3><p class="muted" style="margin:4px 0 8px">Facts from earlier parts + pre-scan flags for this part.</p><pre id="ctx">—</pre></div>
+      <div><h3>Activity</h3><div class="events" id="events" style="max-height:300px;overflow:auto;margin-top:8px"></div></div>
+    </div>
+  </section>
+
+  <section class="card" id="report" hidden>
+    <div class="row" style="justify-content:space-between"><h2>3 · Final report</h2>
+      <div class="row"><a id="dlmd"><button>Download .md</button></a><a id="dljson"><button>Download .json</button></a></div></div>
+    <p id="summary"></p><ol id="prio"></ol>
+    <div class="counts" id="counts"></div>
+    <div id="chains"></div>
+    <div id="findings"></div>
+    <details style="margin-top:14px"><summary class="muted">Seen but not treated as attacks</summary><table id="noise"></table></details>
+    <details style="margin-top:8px"><summary class="muted">Run details (model, token budget, timing)</summary><pre id="runinfo"></pre></details>
+  </section>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+let jobId = null, poll = null, lastReportFor = null;
+function el(tag, attrs = {}, ...kids) {      // DOM builder: log text only ever goes in as plain text
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === 'class' ? e.className = v : e.setAttribute(k, v);
+  for (const k of kids) e.append(k instanceof Node ? k : document.createTextNode(String(k ?? '')));
+  return e;
+}
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
+}
+async function status() {
+  try {
+    const s = await api('/api/status');
+    $('mdot').className = 'dot ' + (s.health && s.health.ok ? 'ok' : 'bad');
+    $('mtext').textContent = `${s.model.backend} · ${s.model.model} · ctx ${s.model.n_ctx}` + (s.health && s.health.ok ? '' : ' · offline');
+    $('mtext').title = s.health ? s.health.detail : '';
+    const m = s.memory;
+    $('ram').textContent = `RAM backend ${m.backend_mb ?? '?'} MB · model ${m.model_mb ?? 'n/a'} MB · limit ${m.limit_mb} MB`;
+  } catch (e) { $('mtext').textContent = 'server unreachable'; }
+}
+async function loadJobs() {
+  const jobs = await api('/api/jobs');
+  const sel = $('jobs'); sel.length = 1;
+  for (const j of jobs) sel.append(el('option', {value: j.id}, `${j.created} · ${j.filename} · ${j.status}`));
+  if (jobId) sel.value = jobId;
+}
+async function upload(file) {
+  $('uperr').textContent = '';
+  if (!/\.(log|txt)$/i.test(file.name)) { $('uperr').textContent = 'Only .log or .txt files.'; return; }
+  $('drop').textContent = `Uploading ${file.name}…`;
+  try {
+    const j = await api('/api/upload', {method: 'POST', body: file, headers: {'X-Filename': file.name}});
+    select(j.id); loadJobs();
+  } catch (e) { $('uperr').textContent = e.message; }
+  finally { $('drop').textContent = 'Drop another file, or click to choose'; $('file').value = ''; }
+}
+function select(id) { jobId = id; lastReportFor = null; $('report').hidden = true; refresh(); clearInterval(poll); poll = setInterval(refresh, 1500); }
+async function act(a) {
+  $('joberr').textContent = '';
+  try { await api(`/api/jobs/${jobId}/${a}`, {method: 'POST'}); refresh(); clearInterval(poll); poll = setInterval(refresh, 1500); }
+  catch (e) { $('joberr').textContent = e.message; }
+}
+async function refresh() {
+  if (!jobId) return;
+  let s; try { s = await api('/api/jobs/' + jobId); } catch (e) { $('joberr').textContent = e.message; return; }
+  const active = ['queued', 'planning', 'running', 'summarizing'].includes(s.status);
+  $('jobinfo').textContent = `${s.filename} — ${s.lines} lines, ${(s.bytes / 1024).toFixed(1)} KB — status: ${s.status}`;
+  $('start').disabled = active; $('cancel').disabled = !active; $('retry').disabled = active || !s.parts_failed;
+  $('start').textContent = s.status === 'done' ? 'Re-run report' : (s.parts_done ? 'Resume analysis' : 'Start analysis');
+  $('joberr').textContent = s.error || '';
+  $('progress').hidden = s.status === 'uploaded' && !s.parts_total;
+  $('phase').textContent = s.phase ? s.phase[0].toUpperCase() + s.phase.slice(1) : s.status;
+  const pct = s.parts_total ? Math.round(100 * s.parts_done / s.parts_total) : 0;
+  $('barfill').style.width = (s.status === 'done' ? 100 : pct) + '%';
+  $('eta').textContent = s.parts_total ? `${s.parts_done}/${s.parts_total} parts` + (s.eta_s && active ? ` · ~${Math.ceil(s.eta_s / 60)} min left` : '') : '';
+  const pg = $('parts'); pg.replaceChildren();
+  for (const p of s.parts) {
+    pg.append(el('span', {class: p.status, title: `Part ${p.i + 1}: L${p.start}-L${p.end}\nstatus ${p.status}, attempts ${p.attempts}\nlog tokens ≈${p.est_tokens}, prompt ${p.prompt_tokens ?? '-'} (server ${p.server_prompt_tokens ?? '-'}), reply ${p.completion_tokens ?? '-'}\n${p.ms ?? '-'} ms, findings ${p.findings ?? '-'}, rejected ${p.dropped ?? '-'}${p.error ? '\nerror: ' + p.error : ''}`}, p.i + 1));
+  }
+  const st = s.stats || {}, b = s.budget || {};
+  const items = [['Model calls', st.calls ?? 0], ['Avg call', s.avg_call_ms ? (s.avg_call_ms / 1000).toFixed(1) + ' s' : '–'],
+    ['Retries', st.retries ?? 0], ['Timeouts', st.timeouts ?? 0], ['JSON repaired', st.json_repaired ?? 0],
+    ['Bad JSON', st.json_failed ?? 0], ['Rejected findings', st.dropped ?? 0], ['Log tokens/part', b.log_per_part ?? '–'],
+    ['Live findings', s.live_findings]];
+  $('stats').replaceChildren(...items.map(([k, v]) => el('div', {class: 'stat'}, el('b', {}, v), el('span', {class: 'muted'}, k))));
+  $('ctx').textContent = s.context_preview || '—';
+  $('events').replaceChildren(...s.events.slice().reverse().map(e => el('div', {class: e.level}, `${e.t.slice(11)}  ${e.msg}`)));
+  if (s.status === 'done' && lastReportFor !== jobId) { lastReportFor = jobId; showReport(); }
+  if (!active && s.status !== 'uploaded') { clearInterval(poll); poll = null; status(); loadJobs(); }
+}
+async function showReport() {
+  const r = await api(`/api/jobs/${jobId}/report`);
+  $('report').hidden = false;
+  $('dlmd').href = `/api/jobs/${jobId}/report.md`; $('dljson').href = `/api/jobs/${jobId}/report.json`;
+  $('summary').textContent = r.summary.text + (r.summary.source === 'model' ? '' : ' (built-in summary; model summary unavailable)');
+  $('prio').replaceChildren(...(r.summary.priorities || []).map(p => el('li', {}, p)));
+  $('counts').replaceChildren(...['Critical', 'High', 'Medium', 'Low'].map(s => el('span', {class: 'sev ' + s}, `${s} ${r.counts[s] || 0}`)));
+  const ch = $('chains'); ch.replaceChildren();
+  if (r.chains.length) {
+    ch.append(el('h3', {style: 'margin-top:10px'}, 'Linked across parts'));
+    for (const c of r.chains) ch.append(el('div', {style: 'margin-top:6px'}, el('span', {class: 'sev ' + c.severity}, c.severity), ' ', el('b', {class: 'mono'}, c.ip), ' ', c.narrative));
+  }
+  const fd = $('findings'); fd.replaceChildren(el('h3', {style: 'margin-top:14px'}, `Findings (${r.findings.length})`));
+  for (const f of r.findings) {
+    const ev = el('pre', {}, f.evidence.map(e => `L${e.line}: ${e.text}`).join('\n') + (f.evidence_count > f.evidence.length ? `\n… ${f.evidence_count - f.evidence.length} more line(s): ${f.evidence_lines.slice(f.evidence.length).map(n => 'L' + n).join(', ')}` : ''));
+    fd.append(el('details', {class: 'finding'},
+      el('summary', {}, el('span', {class: 'sev ' + f.severity}, f.severity), el('b', {}, f.type), el('span', {class: 'mono'}, f.ip),
+        el('span', {class: 'muted'}, `L${f.first_line}–L${f.last_line} · ${f.evidence_count} line(s) · parts ${(f.parts || []).join(', ')}`),
+        el('span', {class: 'tag'}, f.status), ...f.sources.map(s => el('span', {class: 'tag'}, s === 'model' ? 'local model' : 'cross-part correlator'))),
+      el('div', {class: 'body'},
+        el('p', {}, el('b', {}, 'Why: '), f.reason), ...(f.model_reasons || []).map(m => el('p', {class: 'muted'}, 'Model: ' + m)),
+        el('p', {}, el('b', {}, 'Action: '), f.action),
+        f.users && f.users.length ? el('p', {}, el('b', {}, 'Accounts: '), f.users.join(', ')) : '',
+        f.related && f.related.length ? el('p', {class: 'muted'}, 'Related: ' + f.related.join(', ')) : '',
+        ev)));
+  }
+  $('noise').replaceChildren(el('tr', {}, el('th', {}, 'What'), el('th', {}, 'Count'), el('th', {}, 'First line')),
+    ...r.not_flagged.map(n => el('tr', {}, el('td', {}, n.what), el('td', {}, n.count), el('td', {}, 'L' + n.first_line))));
+  $('runinfo').textContent = JSON.stringify({model: r.model, budget: r.budget, stats: r.stats, parts: r.parts, parts_failed: r.parts_failed}, null, 2);
+}
+const drop = $('drop');
+drop.onclick = () => $('file').click();
+$('file').onchange = e => e.target.files[0] && upload(e.target.files[0]);
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); e.dataTransfer.files[0] && upload(e.dataTransfer.files[0]); };
+$('jobs').onchange = e => e.target.value && select(e.target.value);
+$('start').onclick = () => act('start'); $('cancel').onclick = () => act('cancel'); $('retry').onclick = () => act('retry');
+status(); loadJobs(); setInterval(status, 5000);
+</script>
+</body>
+</html>
